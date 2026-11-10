@@ -1,0 +1,9 @@
+dipy==1.12.1          # DIPY 2.0 removes the tracking path this code uses
+nibabel==5.2.1
+numpy==2.3.4
+scipy==1.15.2
+pyvista==0.45.2       # the LV/RV side map depends on the VTK version
+vtk==9.3.1
+scikit-image==0.25.2
+PyYAML==6.0.1
+pynrrd==1.1.3

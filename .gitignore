@@ -1,0 +1,11 @@
+# Inputs and outputs of a run
+data/
+work/
+results/
+
+# Python
+.venv/
+__pycache__/
+
+# macOS
+.DS_Store

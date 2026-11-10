@@ -1,0 +1,170 @@
+# Pipeline settings. Paths are relative to the repository root, the folder the pipeline must be started from.
+# "Set for this heart" marks values chosen for this one specimen; the README lists them. Settings in mm are compared
+# directly with distances in voxels, which assumes 1 mm voxels. "Sub-voxel" means the 0.5 mm grid nested in the DWI grid.
+
+paths:
+  dwi_dicom: "data/dwi_dicom"                     # one subfolder per diffusion repeat, nothing else
+  t1_dicom: "data/t1_dicom"
+  t2_dicom: "data/t2_dicom"
+  manual_mask: "data/myocardium_mask.nrrd"
+  segmentation: "data/segmentation.nii.gz"
+  transmural_vtk: "data/transmural_depth.vtk"
+  epi_surface: "data/epicardium.vtk"
+  lv_endo_surface: "data/lv_endocardium.vtk"
+  rv_endo_surface: "data/rv_endocardium.vtk"
+  work: "work"
+  results: "results"
+
+dicom:
+  b0_threshold: 50              # volumes with b at or below this are treated as b0
+
+registration:
+  pe_axis: 1                    # phase-encode axis of the diffusion series (array axis)
+  crop_dilate: 10               # voxels added around the myocardium for the working crop
+  roi_dilate: 2                 # voxels added around the myocardium for the matching region
+  fluid_b0: 300.0               # b0 signal above this is fluid and left out of the matching region; set for this heart
+  grid: [-3.0, 3.01, 0.25]      # coarse search grid in voxels: start, stop, step
+  refine_half: 0.3              # half-width in voxels of the refinement interval around the best grid point
+  xatol: 0.005                  # refinement tolerance in voxels
+  processes: 8
+
+denoise:
+  patch_radius: 2               # MP-PCA patch radius, voxels
+  slabs: 8                      # number of overlapping slabs along the slice axis
+  overlap: 6                    # slices added on each side of a slab
+  processes: 8
+  gibbs_slice_axis: 2           # array axis along which the slices are stacked
+
+tensor:
+  d_min: 1.0e-5                 # smallest eigenvalue accepted as a real fit (mm^2/s); fits below it sit at the noise
+                                # floor and read FA 0.7 to 0.8
+  d_max: 3.0e-3                 # largest eigenvalue or mean diffusivity accepted (mm^2/s): about free water at 37 C
+                                # (Holz et al. 2000; about 2.0e-3 at 20 C). The specimen temperature is not recorded,
+                                # so this is a loose bound.
+  fa_stop: 0.02                 # FA below this, connected to the mask border, stops tracking
+
+geometry:
+  long_axis: [-0.0081, 0.2438, 0.9698]    # apex-to-base direction (world coordinates); set for this heart
+
+mask:
+  cavity_label: 2                     # cavity label in the segmentation; set for this heart
+  dark_t1_max: 80.0                   # registered T1 at or below this reads as dark, non-tissue, for the LV hull's dark
+                                      # points and the RV trabecular removal; set for this heart
+  basal_cut_last_slice: 69            # last axial slice kept (0-based); set for this heart
+  trace_scales:                       # scales of the T1 and T2 tests on the bias-normalised images; set for this heart
+                                      # (the README says how they were measured)
+    tau: 0.8369771729339845           # T1 at or above this reads as muscle
+    s1_per_mm: 0.2800642653893775     # outward T1 drop per mm at which the edge cost reaches zero
+    tau2: 1.3884592961403541          # T2 above this reads as bright fluid
+    w2: 0.18823996775150298           # soft width of the T2 tests
+  trace:                              # constants of the epicardial trace (src/mask/epi_trace.py)
+    LAM_IN: 1.0                       # weight of non-muscle T1 inside the candidate outline
+    LAM_OUT: 1.0                      # weight of muscle outside the candidate outline
+    LAM_T2: 1.5                       # weight of T2-bright fluid inside the candidate outline
+    ALPHA: 4.0                        # cost per mm by which the path's radius change between rays departs from the face's
+    CAP: 0.5                          # largest such departure between neighbouring rays, mm
+    W: 3.0                            # depth of the inside window, mm
+    W_SOFT_T1: 0.1                    # soft width of the T1 muscle test (normalised T1)
+    EPS: 0.02                         # cost per mm of radius, a slight pull inward
+    FACE_SIG: 4.0                     # smoothing of the manual-mask face along the rays (Gaussian sigma, rays of 0.5 deg)
+    WALL_MIN: 2.0                     # least distance from the cavity, mm, for a slice that falls back to its neighbours
+    SIG_D_MM: 0.5                     # Gaussian sigma of the radial T1 derivative, mm
+    VOID_T1: 0.25                     # normalised T1 below which, with T2 below VOID_T2, a sub-voxel is void
+    VOID_T2: 0.40                     # normalised T2 below which, with T1 below VOID_T1, a sub-voxel is void
+    VOID_MIN_MM2: 25.0                # smallest enclosed void pocket counted as cavity, mm^2
+    OUT_MM: 3.0                       # length that scales the muscle found outside the candidate, mm
+    VOID_CLOSE_MM: 1.0                # radius of the closing that separates enclosed void from open void, mm
+    K_SIGMA: 1.5                      # smoothing of the depth along the slice axis between rounds (Gaussian sigma, slices)
+    LAM_K: 0.5                        # cost per mm of depth away from the neighbours' smoothed depth
+    N_ITER: 2                         # coupling rounds after the first
+    FLOOR_MM: 1.0                     # least distance of the path from the endocardial surface, mm
+    WEDGE_DEG: 25.0                   # half-width of the wedge around each RV insertion point, degrees
+    TAPER_DEG: 5.0                    # width of the taper at the wedge edge, degrees
+    CAP_WEDGE: 2.0                    # CAP inside the wedges, mm
+    K_MIN: 23                         # first slice with groove wedges; set for this heart
+  trace_centre_sigma_slices: 2.0      # smoothing of the ray centres along the slice axis (Gaussian sigma, slices)
+  trace_star_bad_frac: 0.05           # share of rays crossing the filled region more than once above which a slice is
+                                      # solved again from its own centroid
+  endo_surface:                       # smoothed endocardial surface that the trace keeps away from
+    open_mm: 1.5                      # radius of the in-plane opening, mm
+    close_mm: 3.0                     # radius of the in-plane closing, mm
+    k_majority_subslices: 6           # sub-slices in the running majority along the slice axis (more than half)
+  groove_block_dilation_subvox: 2     # dilation of the endocardial surface, in sub-voxels, that the groove channel avoids
+  images:
+    t2_slab_joins: [40, 80]           # first T2 slice above each slab join, on T2's own grid; set for this heart
+    t1_window: [150, 400]             # T1 tissue range used to measure the T2 slab joins; set for this heart
+    norm_deep_mm: 3.0                 # depth into the mask, mm, of the wall that gives the receive-bias estimate
+    norm_sigma_mm: 10.0               # Gaussian sigma of the receive-bias estimate, mm
+    img_sigma_mm: 0.35                # Gaussian smoothing of the normalised images, mm
+  peels:
+    t1_lv: 130.0                      # LV-side T1 peel threshold: half-way between tissue and void on the registered
+                                      # T1, measured on this heart during development; set for this heart
+    t1_rv: 80.0                       # RV-side T1 peel threshold: lower, to keep more of the thin RV wall; set for this heart
+    attenuation_max: 5.0              # attenuation peel threshold: b0 minus mean diffusion-weighted signal, in units of
+                                      # the noise of one volume averaged over the repeats; set for this heart
+    restorable_min_subvox: 3          # of the 4 in-plane sub-voxels that must read as myocardium for the ring guard
+  bridge:                             # constants of the wall bridges (src/mask/bridge.py), mm unless stated
+    TUBE_MM: 1.5                      # radius of the tube around a cut that splits it into two sides; wider tubes follow
+    WIN_MM: 9.0                       # radius of the window around a cut in which its sides are found
+    TAN_MM: 4.0                       # radius around a side's face that gives its direction
+    THIN_FACE: 3                      # a side whose face has at most this many voxels is thin
+    ANISO: 2.0                        # a side at least this elongated (ratio of its two main extents) is thin
+    MERGE_MM: 4.0                     # cuts closer than this on one slice are one cut
+    SNAP_MM: 1.5                      # farthest a curve voxel is moved to an allowed voxel
+    DEV_MM: 2.0                       # largest departure from the endocardial depth before the depth-following path is used
+    ISO_W: 4.0                        # cost per mm of departure from the endocardial depth on the depth-following path
+    GROUP_MM: 3.0                     # cuts on neighbouring slices closer than this share their end tangents
+    SEAL_MAX: 3                       # a leak of at most this many voxels next to a bridge is closed
+    SEAL_NEAR_MM: 3.0                 # a leak voxel closed this way lies within this distance of the bridge
+  hull:
+    cavity_open_mm: 0.0               # blood-pool opening radius; 0 means no opening; set for this heart
+    support_radius_mm: 8.0            # dark peeled voxels this close to the LV cavity or an LV enclosed structure support
+                                      # the LV hull
+    arc_cap_mm: 3.0                   # largest bulge of the arc on each outline edge
+    sigma_mm: 2.0                     # smoothing along the outline, mm
+    sigma_long_slabs: 2.0             # smoothing of the outlines along the long axis, in 1 mm slabs
+    guard_mm: 3.0                     # width of the LV hull's protected band next to the RV cavity and the exterior, mm
+    guard_s: [0.25, 0.75]             # long-axis range of that band (0 apex, 1 base); band and range set for this heart
+  rv_trabeculae:                      # settings of the RV trabecular removal (src/mask/rv_trabeculae.py)
+    floor_mm: 2.5                     # RV wall floor: the removal does not thin the wall below this; set for this heart
+    dark_support_radius_mm: 8.0       # dark voxels this close to the RV cavity or a removed RV structure join the dark cavity
+    anchor_support_radius_mm: 8.0     # dark voxels this close to an anchor give its cleft points
+    contour_sigma_mm: 1.0             # smoothing of the epicardial contour of the wall chart
+    max_rounds: 6                     # rounds of the iterative vetoes
+    R_mm: 8.0                         # radius of the envelope balls, and farthest a removed body lies from its anchor
+    rs_mm: 1.0                        # radius of the opening that a resolved structure must survive
+    anchor_min_mm3: 27.0              # smallest anchor (28 voxels on this grid)
+
+fill:
+  resamples: 500                      # bootstrap resamples
+  seed_base: 1234                     # resample b uses the random seed seed_base + b
+  processes: 6
+  cou95_trigger_deg: 30.0             # voxels with a wider 95% cone of uncertainty are candidates for filling; the same as
+                                      # the tracking angle cap, set for this heart
+  sigma: 1.0                          # Gaussian support weight, voxels
+  depth_min: 1.5                      # voxels; a candidate must be deeper than this in the mask
+  c_min: 0.3                          # minimum support certainty (support weight over the full window's weight)
+  m_max: 0.5                          # maximum centre-of-mass offset of the support, voxels
+  coherence_min: 0.8                  # neighbouring directions must agree at least this much (1 is parallel)
+
+tracking:
+  step_size_vox: 0.1                  # voxels
+  max_angle_deg: 30.0                 # a voxel whose eigenvector is more than this from the direction of travel is left
+                                      # out of the trilinear blend (see src/track.py)
+  seeds_per_axis: 2                   # 2 x 2 x 2 = 8 seeds per voxel
+  maxlen_steps: 7000                  # per direction from the seed
+  min_length_mm: 20.0                 # shorter streamlines are dropped
+  total_weight: 0.5                   # DIPY ends a streamline if less than this share of the trilinear weight has a
+                                      # usable peak within the angle cap
+
+cleaning:
+  trigger_run: 3                      # consecutive unreliable samples (about 2 mm) that cut a streamline
+  wall_deg: 35.0                      # end-trim turning threshold in the rest of the wall, septum included; set for
+                                      # this heart
+  junction_deg: 39.4                  # ... within junction_radius_mm of the LV/RV junction line
+  apex_deg: 31.7                      # ... in the apical part (s below apex_s_max); junction and apex values are the same
+                                      # quantile of each region's 2 mm turning angles away from streamline ends as 35 is in
+                                      # the rest of the wall, measured on this heart during development
+  junction_radius_mm: 2.5             # set for this heart
+  apex_s_max: 0.25                    # long-axis position, 0 at the apex and 1 at the base; set for this heart
+  window_points: [5, 20, 100]         # chord, window and end zone in points at the 0.1 mm step
